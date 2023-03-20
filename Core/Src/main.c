@@ -21,12 +21,16 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+/*std libs*/
 #include "stdbool.h"
+#include "stdio.h"
 
 /*refer https://github.com/afiskon/stm32-ssd1306*/
 #include "ssd1306.h"
-#include <ssd1306_fonts.h>
+#include "ssd1306_fonts.h"
+
+/*refer https://github.com/ciastkolog/BMP280_STM32*/
+#include "bmp280.h"
 
 /* USER CODE END Includes */
 
@@ -48,10 +52,14 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+TIM_HandleTypeDef htim6;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-bool changeFont = false;
+bool change_font = false;
+bool enable_bmp280 = true;
+bool update_screen_bmp280 = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -59,6 +67,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -99,10 +108,19 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_I2C1_Init();
+  MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
-  /*Push button*/
+  /* Peripherals */
+  HAL_TIM_Base_Start_IT(&htim6);
 
+  /* BMP280 */
+  BMP280_HandleTypedef bmp280_handle;
+  bmp280_handle.i2c = &hi2c1;
+  bmp280_handle.addr = BMP280_I2C_ADDRESS_0;
 
+  bmp280_init_default_params(&bmp280_handle.params);
+  bool bmp280_works = false;
+  bmp280_works = bmp280_init(&bmp280_handle, &bmp280_handle.params);
 
   /*OLED*/
   ssd1306_Init();
@@ -118,38 +136,77 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   uint8_t a = 0;
+
+  uint32_t humidity = 0;
+  uint32_t temperature_celsius_times_100 = 0; 	// Temperature in degrees Celsius times 100.
+  uint32_t pressure_pascal = 0; 				// Pressure in Pascals in fixed point 24 bit integer 8 bit fraction format.
+  uint32_t humidity_old = 0;
+  uint32_t temperature_celsius_times_100_old = 0; 	// Temperature in degrees Celsius times 100.
+  uint32_t pressure_pascal_old = 0; 				// Pressure in Pascals in fixed point 24 bit integer 8 bit fraction format.
+  uint32_t temperature_update_thresold = 0;
+  uint32_t bmp280_measurements = 0;
+
+  FontDef* current_font = &Font_16x24;
   while (1)
   {
 	  HAL_GPIO_TogglePin(USER_LED_GREEN_GPIO_Port , USER_LED_GREEN_Pin);
 
-	  if(changeFont){
-		  changeFont = false;
+	  if(change_font){
+		  change_font = false;
 
 		  ssd1306_SetCursor(0, 0);
 		  ssd1306_Fill(Black);
 		  switch (a++) {
 				case 0:
-					ssd1306_WriteString(currentString, Font_6x8, White);
+					current_font = &Font_6x8;
 					break;
 				case 1:
-					ssd1306_WriteString(currentString, Font_7x10, White);
+					current_font = &Font_7x10;
 					break;
 				case 2:
-					ssd1306_WriteString(currentString, Font_11x18, White);
+					current_font = &Font_11x18;
 					break;
 				case 3:
-					ssd1306_WriteString(currentString, Font_16x24, White);
+					current_font = &Font_16x24;
 					break;
 				case 4:
-					ssd1306_WriteString(currentString, Font_16x26, White);
+					current_font = &Font_16x26;
 					break;
 				default:
 					ssd1306_Fill(White);
 					a=0;
 					break;
 			}
-			ssd1306_UpdateScreen();
+		  ssd1306_WriteString(currentString, *current_font, White);
+		  ssd1306_UpdateScreen();
 	  }
+
+	  if(enable_bmp280){
+		  if(! bmp280_is_measuring(&bmp280_handle)){
+			  enable_bmp280 = false;
+
+			  temperature_celsius_times_100_old = temperature_celsius_times_100;
+			  bmp280_read_fixed(&bmp280_handle, &temperature_celsius_times_100, &pressure_pascal, &humidity);
+			  bmp280_measurements++;
+
+			  if((temperature_celsius_times_100 < temperature_celsius_times_100_old - temperature_update_thresold) || (temperature_celsius_times_100 > temperature_celsius_times_100_old + temperature_update_thresold)){
+				  update_screen_bmp280 = true;
+			  }
+		  }
+	  }
+
+	  if(update_screen_bmp280){
+		  //update_screen_bmp280 = false;
+		  uint32_t integer = temperature_celsius_times_100 / 100;
+		  uint32_t decimal = temperature_celsius_times_100 % 100;
+		  sprintf(currentString, "%lu.%lu *C", integer, decimal);
+
+		  ssd1306_SetCursor(0, 0);
+
+		  retChar = ssd1306_WriteString(currentString, *current_font, White);
+		  ssd1306_UpdateScreen();
+	  }
+
 
     /* USER CODE END WHILE */
 
@@ -257,6 +314,44 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief TIM6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM6_Init(void)
+{
+
+  /* USER CODE BEGIN TIM6_Init 0 */
+
+  /* USER CODE END TIM6_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM6_Init 1 */
+
+  /* USER CODE END TIM6_Init 1 */
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = 250 - 1;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.Period = 32000 - 1;
+  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM6_Init 2 */
+
+  /* USER CODE END TIM6_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -342,8 +437,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if (GPIO_Pin == USER_BLUE_PUSHBUTTON_Pin)
   {
-    changeFont = true;
+    change_font = true;
   }
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+	if(htim == &htim6){
+		enable_bmp280 = true;
+	}
 }
 /* USER CODE END 4 */
 
