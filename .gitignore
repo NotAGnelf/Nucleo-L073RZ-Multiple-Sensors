@@ -1,3 +1,13 @@
+# STM32CubeIde
+Debug
+Release
+Nucleo-L073RZ-Multiple-Sensors Debug.launch
+Nucleo-L073RZ-Multiple-Sensors Release.launch
+
+# VSCode
+**.vscode
+**.code-workspace
+
 # Prerequisites
 *.d
 
