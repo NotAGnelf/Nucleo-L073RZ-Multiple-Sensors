@@ -1,3 +1,5 @@
+/*Author: afiskon https://github.com/afiskon/stm32-ssd1306*/
+
 #include <stdint.h>
 
 #ifndef __SSD1306_FONTS_H__

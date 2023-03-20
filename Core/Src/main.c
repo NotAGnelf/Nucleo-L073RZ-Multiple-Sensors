@@ -21,9 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-/*refer https://github.com/afiskon/stm32-ssd1306*/
+
 #include "stdbool.h"
 
+/*refer https://github.com/afiskon/stm32-ssd1306*/
 #include "ssd1306.h"
 #include <ssd1306_fonts.h>
 

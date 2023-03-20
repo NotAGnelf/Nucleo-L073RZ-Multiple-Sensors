@@ -1,3 +1,5 @@
+/*Author: afiskon https://github.com/afiskon/stm32-ssd1306*/
+
 #include <string.h>
 #include <stdio.h>
 #include "ssd1306.h"

@@ -1,4 +1,4 @@
-
+/*Author: afiskon https://github.com/afiskon/stm32-ssd1306*/
 #include "ssd1306_fonts.h"
 
 #ifdef SSD1306_INCLUDE_FONT_7x10
